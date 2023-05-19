@@ -1,0 +1,115 @@
+from utils.libraries import *
+from utils.functions import *
+
+def train_model(data):
+
+    YES_CAP = False
+
+    st.markdown("### Basics")
+
+    growth = st.selectbox("**Select Growth Type**", [
+        "linear", "logistic",
+        "flat"
+    ])
+
+    YES_CAP = st.checkbox("***Add Capacity?***")
+
+    if YES_CAP or growth == "logistic":
+        YES_CAP = True
+
+        col3, col4 = st.columns(2)
+
+        with col3:
+            MAX = st.number_input("**Maximum**")
+
+        with col4:
+            MIN = st.number_input("**Minimum**", 0.0)
+
+        data['cap'] = MAX
+        data['floor'] = MIN
+
+    holidays = None
+
+    yes_holidays = st.checkbox("**Add Holidays?**")
+    holidays_prior_scale = 10.0
+
+    if yes_holidays:
+        PATH = st.file_uploader("***Upload Holidays Data***")
+
+        if PATH is not None:
+            holidays = open_file(PATH)
+            holidays['ds'] = pd.to_datetime(holidays['ds'])
+
+            holidays_prior_scale = st.slider("**Holiday Priority Scale**", 0.1, 20.0, 10.0)
+
+    coll, col2 = st.columns(2)
+
+    with coll:
+        st.markdown("### Seasonality")
+        seasonality_mode = st.selectbox(
+            "***Select Seasonality Mode***",
+            [
+                "additive", "multiplicative"
+            ]
+        )
+
+        yearly_seasonality = st.selectbox(
+            "***Select Yearly Seasonality***",
+            [
+                "auto",
+                True,
+                False,
+                "Manual"
+            ]
+        )
+
+        if yearly_seasonality == "Manual":
+            yearly_fourier = st.slider("**Yearly Fourier Order**", 1, 30)
+            # model.add_seasonality(name='yearly', period=365, fourier_order=yearly_fourier)
+
+    with col2:
+        st.markdown("### Changepoint")
+        changepoint_range = st.slider("**Changepoint Range**", 0.1, 1.0, 0.8)
+        n_changepoints = st.slider("**Number of Changepoints**", 1, 100, 25)
+        changepoint_prior_scale = st.slider("**Changepoint Prior Scale**", 8.01, 0.5, 0.05)
+        interval_width = st.slider("**Interval Width**", 0.1, 0.9, 0.8)
+
+    with st.spinner(text='Loading Prophet Model'):
+        model = Prophet(
+            growth=growth,
+            holidays=holidays,
+            seasonality_mode=seasonality_mode,
+            yearly_seasonality=yearly_seasonality,
+            changepoint_range=changepoint_range,
+            n_changepoints=n_changepoints,
+            interval_width=interval_width,
+            holidays_prior_scale=holidays_prior_scale,
+            changepoint_prior_scale=changepoint_prior_scale
+        )
+
+
+    fit = st.button("Fit Prophet")
+
+    if fit:
+        with st.spinner(text='Prophet is Fitting'):
+            model.fit(data)
+            st.success("Model Trained Successfully")
+
+            forecast = model.predict(data)
+
+            with open('./saved_model/prophet_model.json', 'w') as fout:
+                fout.write(model_to_json(model))
+
+                if YES_CAP or growth == "logistic":
+                    data = {
+                        "YES_CAP": YES_CAP,
+                        "MAX": MAX,
+                        "MIN": MIN
+                    }
+
+                with open('./saved_model/model_config.pkl', 'wb') as file:
+                    pickle.dump(data,file)
+                        
+                return model,forecast,True
+            
+    return None,None,False
